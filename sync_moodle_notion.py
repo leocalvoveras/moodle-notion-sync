@@ -41,20 +41,29 @@ P_ID = "ID Moodle"               # tipo Texto (hay que crearla)
 # Cada patrón se busca tanto en el nombre del curso de Moodle como en las
 # opciones de Asignatura de Notion (sin tildes ni mayúsculas). Si coinciden,
 # se asigna esa opción. Así no importa si hay pequeñas diferencias de nombre.
+# Segundo valor: nombre a usar si esa opción aún no existe en Notion
+# (Notion la crea sola). None = no crear nada.
 SUBJECT_PATTERNS = [
-    r"marcas",
-    r"digitaliz",
-    r"entornos",
-    r"ingles",
-    r"\bipe\b|empresa e iniciativa",
-    r"programacion|sistemas inform",
+    (r"marcas", None),
+    (r"digitaliz", None),
+    (r"entornos", None),
+    (r"ingles", None),
+    (r"\bipe\b|empleabilidad|empresa e iniciativa", None),
+    (r"programacion|sistemas inform", None),
+    (r"bases de datos", "Bases de datos"),
 ]
 
 # Textos que Moodle añade al título de las tareas y que sobran en Notion
 TITLE_SUFFIXES = [" está en fecha de entrega", " vence", " is due", " closes", " opens"]
 
+# Prefijos que Moodle añade al título y sobran en Notion
+TITLE_PREFIXES = ["Vencimiento de ", "Cierre de "]
+
+# Eventos que no son tareas y no se importan (patrones sobre el título)
+IGNORE_TITLES = [r"^informativo"]
+
 # No se crean tareas cuyo plazo ya pasó hace más de estos días
-SKIP_OLDER_THAN_DAYS = 1
+SKIP_OLDER_THAN_DAYS = 0
 
 
 def norm(text):
@@ -111,6 +120,10 @@ def parse_dt(params, value):
 
 def clean_title(summary):
     title = summary.strip()
+    for prefix in TITLE_PREFIXES:
+        if title.lower().startswith(prefix.lower()):
+            title = title[len(prefix):].strip()
+            break
     for suffix in TITLE_SUFFIXES:
         if title.lower().endswith(suffix.strip().lower()):
             title = title[: -len(suffix.strip())].rstrip()
@@ -193,12 +206,13 @@ def load_existing():
 
 
 def match_subject(course, options):
-    course_n = norm(course)
-    for pattern in SUBJECT_PATTERNS:
+    course_n = norm(course).replace("-", " ")
+    for pattern, default_name in SUBJECT_PATTERNS:
         if re.search(pattern, course_n):
             for opt in options:
                 if re.search(pattern, norm(opt)):
                     return opt
+            return default_name
     return None
 
 
@@ -217,6 +231,8 @@ def main():
         if not uid or not summary or "DTSTART" not in ev:
             continue
         title = clean_title(summary)
+        if any(re.search(pat, title, re.IGNORECASE) for pat in IGNORE_TITLES):
+            continue
         due = parse_dt(*ev["DTSTART"])
         course = ev.get("CATEGORIES", ("", ""))[1]
         subject = match_subject(course, subject_options) if course else None

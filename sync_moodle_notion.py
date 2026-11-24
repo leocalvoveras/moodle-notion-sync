@@ -157,17 +157,22 @@ def notion(method, path, body=None, retries=3):
 def load_schema():
     db = notion("GET", f"/databases/{DATABASE_ID}")
     props = db["properties"]
-    expected = {P_TITLE: "title", P_SUBJECT: "select", P_STATUS: "select",
+    expected = {P_TITLE: "title", P_SUBJECT: "select",
                 P_DATE: "date", P_ID: "rich_text"}
     for name, kind in expected.items():
         if name not in props:
             sys.exit(f"Falta la propiedad '{name}' (tipo {kind}) en la base de datos de Notion.")
         if props[name]["type"] != kind:
             sys.exit(f"La propiedad '{name}' debe ser de tipo {kind}, pero es {props[name]['type']}.")
+    if P_STATUS not in props:
+        sys.exit(f"Falta la propiedad '{P_STATUS}' en la base de datos de Notion.")
+    status_kind = props[P_STATUS]["type"]  # puede ser "select" o "status"
+    if status_kind not in ("select", "status"):
+        sys.exit(f"La propiedad '{P_STATUS}' debe ser de tipo select o status, pero es {status_kind}.")
     subject_options = [o["name"] for o in props[P_SUBJECT]["select"]["options"]]
-    status_options = [o["name"] for o in props[P_STATUS]["select"]["options"]]
+    status_options = [o["name"] for o in props[P_STATUS][status_kind]["options"]]
     initial = next((o for o in status_options if norm(o).startswith("sin")), "Sin empezar")
-    return subject_options, initial
+    return subject_options, initial, status_kind
 
 
 def load_existing():
@@ -200,7 +205,7 @@ def match_subject(course, options):
 # ---------- Principal ----------
 
 def main():
-    subject_options, initial_status = load_schema()
+    subject_options, initial_status, status_kind = load_schema()
     existing = load_existing()
     events = parse_events(fetch_ics())
     limit = (datetime.now(TZ) - timedelta(days=SKIP_OLDER_THAN_DAYS)).date().isoformat()
@@ -227,7 +232,7 @@ def main():
                 P_TITLE: {"title": [{"text": {"content": title[:2000]}}]},
                 P_ID: {"rich_text": [{"text": {"content": uid}}]},
                 P_DATE: {"date": {"start": due}},
-                P_STATUS: {"select": {"name": initial_status}},
+                P_STATUS: {status_kind: {"name": initial_status}},
             }
             if subject:
                 props[P_SUBJECT] = {"select": {"name": subject}}

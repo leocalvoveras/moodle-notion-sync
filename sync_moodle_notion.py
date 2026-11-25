@@ -50,7 +50,7 @@ SUBJECT_PATTERNS = [
     (r"ingles", None),
     (r"sistemas inform", None),
     (r"programacion", None),
-    (r"bases de datos", "Bases de datos"),
+    (r"bases? de datos", "Base de Datos"),
 ]
 
 # Textos que Moodle añade al título de las tareas y que sobran en Notion

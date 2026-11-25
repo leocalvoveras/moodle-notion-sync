@@ -48,13 +48,16 @@ SUBJECT_PATTERNS = [
     (r"digitaliz", None),
     (r"entornos", None),
     (r"ingles", None),
-    (r"\bipe\b|empleabilidad|empresa e iniciativa", None),
     (r"programacion|sistemas inform", None),
     (r"bases de datos", "Bases de datos"),
 ]
 
 # Textos que Moodle añade al título de las tareas y que sobran en Notion
 TITLE_SUFFIXES = [" está en fecha de entrega", " vence", " is due", " closes", " opens"]
+
+# Cursos de Moodle que no cursas: sus tareas no se importan nunca
+# (patrones sobre el nombre del curso, sin tildes ni guiones)
+IGNORE_COURSES = [r"empleabilidad", r"\bipe\b"]
 
 # Prefijos que Moodle añade al título y sobran en Notion
 TITLE_PREFIXES = ["Vencimiento de ", "Cierre de "]
@@ -235,6 +238,9 @@ def main():
             continue
         due = parse_dt(*ev["DTSTART"])
         course = ev.get("CATEGORIES", ("", ""))[1]
+        course_n = norm(course).replace("-", " ")
+        if any(re.search(pat, course_n) for pat in IGNORE_COURSES):
+            continue
         subject = match_subject(course, subject_options) if course else None
         if course and not subject:
             print(f"Aviso: no sé qué asignatura es '{course}' (tarea: {title})")

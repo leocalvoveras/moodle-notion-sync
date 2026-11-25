@@ -48,7 +48,8 @@ SUBJECT_PATTERNS = [
     (r"digitaliz", None),
     (r"entornos", None),
     (r"ingles", None),
-    (r"programacion|sistemas inform", None),
+    (r"sistemas inform", None),
+    (r"programacion", None),
     (r"bases de datos", "Bases de datos"),
 ]
 

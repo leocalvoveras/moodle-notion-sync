@@ -73,7 +73,7 @@ SKIP_OLDER_THAN_DAYS = 0
 # Vale para todas las tareas de la base de datos, también las que añadas a mano.
 # Solo se borran las que están en estado Completado: las que siguen en
 # "Sin empezar" o "En progreso" se conservan siempre, y las que no tienen Plazo también.
-DELETE_AFTER_DAYS = 20
+DELETE_AFTER_DAYS = 10
 
 
 def norm(text):

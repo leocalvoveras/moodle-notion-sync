@@ -69,6 +69,12 @@ IGNORE_TITLES = [r"^informativo"]
 # No se crean tareas cuyo plazo ya pasó hace más de estos días
 SKIP_OLDER_THAN_DAYS = 0
 
+# Una tarea se borra de Notion cuando han pasado estos días desde su Plazo.
+# Vale para todas las tareas de la base de datos, también las que añadas a mano.
+# Solo se borran las que están en estado Completado: las que siguen en
+# "Sin empezar" o "En progreso" se conservan siempre, y las que no tienen Plazo también.
+DELETE_AFTER_DAYS = 20
+
 
 def norm(text):
     text = unicodedata.normalize("NFKD", text)
@@ -192,8 +198,14 @@ def load_schema():
     return subject_options, initial, status_kind
 
 
+def status_name(page):
+    prop = page["properties"].get(P_STATUS, {})
+    value = prop.get("status") or prop.get("select") or {}
+    return value.get("name") or ""
+
+
 def load_existing():
-    pages, cursor = {}, None
+    pages, all_pages, cursor = {}, [], None
     while True:
         body = {"page_size": 100}
         if cursor:
@@ -202,10 +214,11 @@ def load_existing():
         for p in res["results"]:
             rt = p["properties"].get(P_ID, {}).get("rich_text", [])
             uid = "".join(t["plain_text"] for t in rt)
+            all_pages.append(p)
             if uid:
                 pages[uid] = p
         if not res.get("has_more"):
-            return pages
+            return pages, all_pages
         cursor = res["next_cursor"]
 
 
@@ -224,7 +237,29 @@ def match_subject(course, options):
 
 def main():
     subject_options, initial_status, status_kind = load_schema()
-    existing = load_existing()
+    existing, all_pages = load_existing()
+
+    # Borrar (archivar) las tareas cuyo Plazo pasó hace DELETE_AFTER_DAYS días o más
+    today = datetime.now(TZ).date()
+    removed = 0
+    for page in all_pages:
+        start = (page["properties"][P_DATE]["date"] or {}).get("start")
+        if not start:
+            continue  # sin plazo: no se borra
+        days_since = (today - datetime.strptime(start[:10], "%Y-%m-%d").date()).days
+        if days_since < DELETE_AFTER_DAYS:
+            continue
+        name = "".join(t["plain_text"] for t in page["properties"][P_TITLE]["title"])
+        if not norm(status_name(page)).startswith("complet"):
+            print(f"[se conserva] {name} (plazo {start[:10]}, estado: {status_name(page) or 'sin estado'})")
+            continue
+        print(f"[borrar] {name} (plazo {start[:10]}, hace {days_since} días)")
+        if not DRY_RUN:
+            notion("PATCH", f"/pages/{page['id']}", {"archived": True})
+            time.sleep(0.35)
+        uid = "".join(t["plain_text"] for t in page["properties"].get(P_ID, {}).get("rich_text", []))
+        existing.pop(uid, None)
+        removed += 1
     events = parse_events(fetch_ics())
     limit = (datetime.now(TZ) - timedelta(days=SKIP_OLDER_THAN_DAYS)).date().isoformat()
 
@@ -288,7 +323,7 @@ def main():
 
     modo = " (simulación, no se ha escrito nada)" if DRY_RUN else ""
     print(f"Listo{modo}: {created} creadas, {updated} actualizadas, "
-          f"{unchanged} sin cambios, {skipped} antiguas omitidas.")
+          f"{unchanged} sin cambios, {skipped} omitidas, {removed} borradas.")
 
 
 if __name__ == "__main__":
